@@ -49,9 +49,7 @@ class AOSSEmbeddings:
         )
 
     def load_pdf(self, path: str) -> List[Document]:
-        """
-        Carga todas las páginas de un PDF como una lista de documentos.
-        """
+
         try:
             loader = PyMuPDFLoader(path)  # Usa el loader para PDFs
             documents = loader.load()  # Carga todas las páginas
@@ -63,9 +61,6 @@ class AOSSEmbeddings:
             raise ValueError(f"Error loading PDF '{path}': {e}")
 
     def load_pdfs_from_dir(self, path: str) -> List[Document]:
-        """
-        Carga todos los PDFs de un directorio dado, incluyendo todas sus páginas.
-        """
         try:
             pdf_files = glob.glob(os.path.join(path, '**', '*.pdf'), recursive=True)
             print(f"Archivos encontrados: {pdf_files}")
