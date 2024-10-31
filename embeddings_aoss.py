@@ -1,6 +1,6 @@
 import glob
 import json
-
+import fitz  # PyMuPDF
 import boto3
 import os
 from typing import List
@@ -49,28 +49,61 @@ class AOSSEmbeddings:
         )
 
     def load_pdf(self, path: str) -> List[Document]:
-
+        """
+        Lee un PDF y lo divide en secciones según títulos y subtítulos.
+        """
         try:
-            loader = PyMuPDFLoader(path)  # Usa el loader para PDFs
-            documents = loader.load()  # Carga todas las páginas
+            doc = fitz.open(path)
+            sections = []  # Almacena las secciones como Document
+            current_section = []  # Almacena las líneas de la sección actual
 
-            print(f"PDF '{path}' cargado con {len(documents)} páginas.")
-            return documents  # Devuelve la lista completa de documentos
+            # Iterar sobre cada página del PDF
+            for page_num in range(doc.page_count):
+                page = doc.load_page(page_num)
+                blocks = page.get_text("dict")["blocks"]
+
+                # Recorrer los bloques y detectar títulos por tamaño de fuente
+                for block in blocks:
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                text = span["text"].strip()
+                                font_size = span["size"]
+
+                                # Si detectamos un título, guardamos la sección anterior
+                                if font_size > 8 and current_section:
+                                    sections.append(
+                                        Document(page_content="\n".join(current_section))
+                                    )
+                                    current_section = []
+
+                                # Agregamos el texto a la sección actual
+                                current_section.append(text)
+
+            # Agregar la última sección si no está vacía
+            if current_section:
+                sections.append(Document(page_content="\n".join(current_section)))
+
+            print(f"PDF '{path}' cargado con {len(sections)} secciones.")
+            return sections
 
         except Exception as e:
             raise ValueError(f"Error loading PDF '{path}': {e}")
 
     def load_pdfs_from_dir(self, path: str) -> List[Document]:
+        """
+        Lee todos los PDFs de un directorio y los divide en secciones según títulos y subtítulos.
+        """
         try:
             pdf_files = glob.glob(os.path.join(path, '**', '*.pdf'), recursive=True)
             print(f"Archivos encontrados: {pdf_files}")
 
             all_documents = []
             for pdf in pdf_files:
-                documents = self.load_pdf(pdf)  # Carga todas las páginas del PDF
-                all_documents.extend(documents)  # Añade todas las páginas a la lista general
+                documents = self.load_pdf(pdf)  # Carga las secciones del PDF
+                all_documents.extend(documents)  # Añade las secciones a la lista general
 
-            print(f"Total de documentos cargados: {len(all_documents)}")
+            print(f"Total de secciones cargadas: {len(all_documents)}")
             return all_documents
 
         except Exception as e:
@@ -116,20 +149,15 @@ class AOSSEmbeddings:
         print(results)
         rr = [{"page_content": r.page_content, "metadata": r.metadata} for r in results]
         data = ""
-        meta_files = []
 
         for doc in rr:
             data += f"\n{doc['page_content']}\n"
-            meta_files.append(doc['metadata']['source'])
-            print(doc['metadata'])
-
 
         print('#' * 20)
         print(data)
-        print(meta_files)
         print('#' * 20)
 
-        return data, meta_files
+        return data
 
 
 if __name__ == "__main__":
