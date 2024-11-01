@@ -148,10 +148,10 @@ class AOSSEmbeddings:
         )
         print(results)
         rr = [{"page_content": r.page_content, "metadata": r.metadata} for r in results]
-        data = ""
+        data = []
 
         for doc in rr:
-            data += f"\n{doc['page_content']}\n"
+            data.append(f"{doc['page_content']}")
 
         print('#' * 20)
         print(data)
