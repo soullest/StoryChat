@@ -1,21 +1,27 @@
-import boto3
 import os
 import random
+
+import pandas as pd
 import streamlit as st
 
 from openai import OpenAI
-from langchain_aws import ChatBedrock
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.prompts import MessagesPlaceholder
-from langchain_core.runnables.history import RunnableWithMessageHistory
 from embeddings_aoss import AOSSEmbeddings
+from streamlit_feedback import streamlit_feedback
 
 from dotenv import load_dotenv
 load_dotenv()
 
 aoss_emb = AOSSEmbeddings()
+
+def handle_feedback(fb_key, prompt, answer):
+    st.toast("✔️ Feedback received!")
+    file_path = "HumanFeedback.xlsx"
+    df = pd.read_excel(file_path)
+    row = [prompt, answer, st.session_state[fb_key]['score'], st.session_state[fb_key]['text']]
+    new_row = pd.DataFrame([row], columns=df.columns)
+    df = pd.concat([df, new_row], ignore_index=True)
+    df.to_excel(file_path, index=False, engine="openpyxl")
 
 def title_setup() -> None:
     """
@@ -68,7 +74,7 @@ def sidepanel_setup() -> None:
     with st.sidebar:
         st.title('Ejemplos')
         st.info("""
-        • ¿Cualés son las alianzas de historiacard?\n
+        • ¿Cualés son las alianzas con comercios y proveedores de historiacard?\n
         • ¿Cuál es la visión de historiacard?\n
         • ¿Qué se puede hacer en la sección de Mi Perfil de la app de historiacard?\n
         • ¿Es posible acceder usando mi huella digital a mi app de historiacard?\n
@@ -93,6 +99,8 @@ def initial_setup() -> None:
             {"role": "system", "content": os.environ["CONTEXT_PROMPT"]},
             {"role": "assistant", "content": "Como te puedo ayudar?"}
         ]
+        ev_cols = ['Prompt', 'Response', 'Expected Answer', 'Source_1', 'Source_2', 'Source_3', 'Human Feedback']
+        st.session_state.evaluation_df = pd.DataFrame(columns=ev_cols)
         st.session_state.setup_ready = 0
 
 
@@ -108,12 +116,22 @@ def main() -> None:
     sidepanel_setup()
 
     initial_setup()
-
-    for msg in st.session_state.history.messages[1:]:
+    last_prompt = ''
+    for idx, msg in enumerate(st.session_state.history.messages[1:], start=1):
         if msg.type == 'ai':
             st.chat_message(msg.type, avatar='media/stori_logo.png').write(msg.content, unsafe_allow_html=True)
+            if idx > 1:
+                with st.form(f'form{str(random.randint(1, 1000000))}'):
+                    form_key = f'fb_k{str(random.randint(1, 1000000))}'
+                    streamlit_feedback(feedback_type="thumbs",
+                                       optional_text_label="[Optional] Please provide an explanation",
+                                       align="flex-start",
+                                       key=form_key)
+                    st.form_submit_button('Save feedback', on_click=handle_feedback, args=(form_key, last_prompt, msg.content))
         else:
             st.chat_message(msg.type).write(msg.content, unsafe_allow_html=True)
+            last_prompt = msg.content
+
 
     # Get the prompt from the user
     if prompt := st.chat_input():
@@ -140,7 +158,8 @@ def main() -> None:
 
             emb_abs = completion.choices[0].message.content
             print(f"{'-'*20}\nEmb abstract: {emb_abs}\n{'-'*20}")
-            emb_info = aoss_emb.query(question=emb_abs, k=3)
+            emb_list = aoss_emb.query(question=emb_abs, k=3)
+            emb_info = '\n'.join(emb_list)
             full_question = f"""Responde la siguiente pregunta:
             {prompt}
             
@@ -176,6 +195,12 @@ def main() -> None:
         st.session_state.history.add_ai_message(full_response)
         st.session_state.messages.append({"role": "assistant", "content": full_question})
 
+        row = [prompt, full_response, '', emb_list[0], emb_list[1], emb_list[2]]
+        file_path = "metrics.xlsx"
+        df = pd.read_excel(file_path)
+        new_row = pd.DataFrame([row], columns=df.columns)
+        df = pd.concat([df, new_row], ignore_index=True)
+        df.to_excel(file_path, index=False, engine="openpyxl")
         st.rerun()
 
 if __name__ == "__main__":
