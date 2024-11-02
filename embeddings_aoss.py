@@ -1,13 +1,10 @@
 import glob
-import json
 import fitz  # PyMuPDF
 import boto3
 import os
 from typing import List
 from langchain_aws import BedrockEmbeddings
 from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_community.vectorstores import OpenSearchVectorSearch
 from opensearchpy import RequestsHttpConnection, OpenSearch
 from requests_aws4auth import AWS4Auth
@@ -129,13 +126,6 @@ class AOSSEmbeddings:
         # Almacenar los fragmentos en OpenSearch
         self.vector.add_documents(documents=splits, vector_field="rag_vector", bulk_size=3000)
 
-        # text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20)
-        # splits = text_splitter.split_documents(data)
-        # self.vector.add_documents(
-        #     documents=splits,
-        #     vector_field="rag_vector",
-        #     bulk_size=3000
-        # )
 
     def query(self, question: str, k: int = 5):
 
