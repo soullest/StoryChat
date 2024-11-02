@@ -1,6 +1,5 @@
 import os
 import random
-
 import pandas as pd
 import streamlit as st
 
@@ -8,11 +7,19 @@ from openai import OpenAI
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from embeddings_aoss import AOSSEmbeddings
 from streamlit_feedback import streamlit_feedback
-
 from dotenv import load_dotenv
-load_dotenv()
 
+
+load_dotenv()
 aoss_emb = AOSSEmbeddings()
+
+
+def replace_alias(input_string: str) -> str:
+    for key, value in st.session_state.alias_df.items():
+        if key in input_string:
+            input_string = input_string.replace(key, value)
+    return input_string
+
 
 def handle_feedback(fb_key, prompt, answer):
     st.toast("✔️ Feedback received!")
@@ -23,10 +30,8 @@ def handle_feedback(fb_key, prompt, answer):
     df = pd.concat([df, new_row], ignore_index=True)
     df.to_excel(file_path, index=False, engine="openpyxl")
 
+
 def title_setup() -> None:
-    """
-    Set up the title, subtitle and information in the header
-    """
     st.set_page_config(page_title="Stori Chat")
     st.markdown("""
     <style>
@@ -74,10 +79,10 @@ def sidepanel_setup() -> None:
     with st.sidebar:
         st.title('Ejemplos')
         st.info("""
-        • ¿Cualés son las alianzas con comercios y proveedores de historiacard?\n
-        • ¿Cuál es la visión de historiacard?\n
-        • ¿Qué se puede hacer en la sección de Mi Perfil de la app de historiacard?\n
-        • ¿Es posible acceder usando mi huella digital a mi app de historiacard?\n
+        • ¿Cualés son las alianzas con comercios y proveedores de Stori?\n
+        • ¿Cuál es la visión de StoriCard?\n
+        • ¿Qué se puede hacer en la sección de Mi Perfil de la app de Stori Card?\n
+        • ¿Es posible acceder usando mi huella digital a mi app de Stori?\n
         """)
         st.divider()
         st.title("Historial")
@@ -99,15 +104,11 @@ def initial_setup() -> None:
             {"role": "system", "content": os.environ["CONTEXT_PROMPT"]},
             {"role": "assistant", "content": "Como te puedo ayudar?"}
         ]
-        ev_cols = ['Prompt', 'Response', 'Expected Answer', 'Source_1', 'Source_2', 'Source_3', 'Human Feedback']
-        st.session_state.evaluation_df = pd.DataFrame(columns=ev_cols)
+        st.session_state.alias_df = st.session_state.alias_dict = pd.read_csv("alias.csv").set_index("word")["meaning"].to_dict()
         st.session_state.setup_ready = 0
 
 
 def main() -> None:
-    """
-    This function will be reach as the start point to the chat
-    """
     title_setup()
 
     if "widget_key" not in st.session_state:
@@ -135,10 +136,11 @@ def main() -> None:
 
     # Get the prompt from the user
     if prompt := st.chat_input():
-
         st.chat_message("user").write(prompt)
+        st.session_state.history.add_user_message(prompt)
+        prompt = replace_alias(prompt.lower())
+
         with st.spinner('Un momento...'):
-            config = {"configurable": {"session_id": "any"}}
             emb_question = f"""
             Summarize the following question in only the 3 to 5 most relevant words. 
             Answer using only 3 to 5 words, do not add anything else.
@@ -171,7 +173,7 @@ def main() -> None:
             full_response = ''
 
         st.session_state.messages.append({"role": "user", "content": full_question})
-        st.session_state.history.add_user_message(prompt)
+
         for delta in st.session_state.client.chat.completions.create(
                 model=st.session_state.model_id,
                 temperature=0,
@@ -180,17 +182,8 @@ def main() -> None:
                 stream=True):
             full_response += str(delta.choices[0].delta.content)
             placeholder.chat_message("ai", avatar='media/stori_logo.png').write(full_response)
-        # message = {"role": "assistant", "content": response}
-        # st.session_state.visible_messages.append(message)
-        # for chunk in st.session_state.chain_with_history.stream({"question": prompt}, config):
-        #     full_response += chunk
-        #     placeholder.chat_message("ai", avatar='media/stori_logo.png').write(full_response)
-
 
         placeholder.chat_message("ai", avatar='media/stori_logo.png').write(full_response, unsafe_allow_html=True)
-
-        placeholder.chat_message("ai", avatar='media/stori_logo.png').write(full_response, unsafe_allow_html=True)
-
 
         st.session_state.history.add_ai_message(full_response)
         st.session_state.messages.append({"role": "assistant", "content": full_question})
@@ -202,6 +195,7 @@ def main() -> None:
         df = pd.concat([df, new_row], ignore_index=True)
         df.to_excel(file_path, index=False, engine="openpyxl")
         st.rerun()
+
 
 if __name__ == "__main__":
     main()
